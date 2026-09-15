@@ -68,6 +68,7 @@ export default function App() {
   const [speed, setSpeed] = useState(1000)
   const [source, setSource] = useState('sim')
   const [filter, setFilter] = useState('')
+  const [now, setNow] = useState(() => new Date())
   const lastSampleRef = useRef(null)
 
   const applySample = useCallback((sample) => {
@@ -78,6 +79,11 @@ export default function App() {
       const next = [...prev, compact]
       return next.length > 300 ? next.slice(next.length - 300) : next
     })
+  }, [])
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000)
+    return () => clearInterval(id)
   }, [])
 
   useEffect(() => {
@@ -159,6 +165,9 @@ export default function App() {
               HWiNFO64
             </button>
           </div>
+          <span className="clock-now">
+            {now.toLocaleTimeString('pt-BR', { hour12: false })}
+          </span>
           <span className="live-badge">
             <span className="live-dot" /> AO VIVO
           </span>
