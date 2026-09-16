@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events'
 import { execFile } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { app } from 'electron'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const HISTORY_LIMIT = 300
@@ -11,9 +12,16 @@ const PRIORITY_CPU = [/CPU.*Package Power/i, /CPU.*Total.*Power/i, /^CPU Power$/
 const PRIORITY_GPU = [/Total.*Power/i, /^GPU Power$/i, /GPU.*Package.*Power/i, /GPU.*Board.*Power/i, /GPU.*Chip.*Power/i]
 const PRIORITY_SYSTEM = [/Total System Power/i, /System Power Total/i, /System Power/i]
 
+function pollScriptPath() {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'app.asar.unpacked', 'electron', 'hwinfo-poll.ps1')
+  }
+  return path.join(__dirname, 'hwinfo-poll.ps1')
+}
+
 function runPs() {
   return new Promise((resolve) => {
-    const script = path.join(__dirname, 'hwinfo-poll.ps1')
+    const script = pollScriptPath()
     execFile(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script],

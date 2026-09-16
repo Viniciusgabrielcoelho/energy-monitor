@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import EnergyChart from './components/EnergyChart.jsx'
 import StatCard from './components/StatCard.jsx'
+import CostPanel from './components/CostPanel.jsx'
+import { TARIFFS } from './tariffs.js'
 
 const SPEEDS = [
   { label: '1x', ms: 1000 },
@@ -60,16 +62,32 @@ const CardIcon = {
       <path d="M6 11v2m4-2v2m6-2h2m1 0h1" strokeLinecap="round" />
     </svg>
   ),
+  coin: (
+    <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <rect x="2" y="6" width="20" height="12" rx="2" />
+      <path d="M12 8.5v7m0-7a1.5 1.5 0 0 1 0-2.5m0 12a1.5 1.5 0 0 1 0-2.5" strokeLinecap="round" />
+    </svg>
+  ),
 }
 
 export default function App() {
   const [current, setCurrent] = useState(null)
   const [history, setHistory] = useState([])
   const [speed, setSpeed] = useState(1000)
-  const [source, setSource] = useState('sim')
   const [filter, setFilter] = useState('')
+  const [tab, setTab] = useState('monitor')
+  const [city, setCity] = useState(() => localStorage.getItem('em_city') ?? '')
+  const [uf, setUf] = useState(() => localStorage.getItem('em_uf') ?? 'SP')
   const [now, setNow] = useState(() => new Date())
   const lastSampleRef = useRef(null)
+
+  useEffect(() => {
+    localStorage.setItem('em_city', city)
+    localStorage.setItem('em_uf', uf)
+  }, [city, uf])
+
+  const tariffInfo = TARIFFS[uf] ?? TARIFFS.SP
+  const estimatedCost = (current?.energyKwh ?? 0) * tariffInfo.tariff
 
   const applySample = useCallback((sample) => {
     lastSampleRef.current = sample
@@ -96,7 +114,6 @@ export default function App() {
       if (snap) {
         setHistory(snap.history)
         setCurrent(snap)
-        setSource(snap.source ?? 'sim')
       }
     })
     const unsubscribe = api.onSample((sample) => {
@@ -116,13 +133,8 @@ export default function App() {
     window.energyAPI.setSpeed(ms).then(setSpeed)
   }
 
-  const handleSource = (s) => {
-    if (!window.energyAPI) return
-    window.energyAPI.setSource(s).then(setSource)
-  }
-
   const hasAPI = Boolean(window.energyAPI)
-  const isHwinfo = source === 'hwinfo'
+  const isHwinfo = true
 
   const filteredSensors = useCallback(() => {
     const sensors = current?.sensors ?? []
@@ -151,18 +163,18 @@ export default function App() {
           </div>
         </div>
         <div className="header-actions">
-          <div className="source-control" title="Fonte dos dados">
+          <div className="source-control" role="tablist" title="Seções">
             <button
-              className={`source-btn ${!isHwinfo ? 'active' : ''}`}
-              onClick={() => handleSource('sim')}
+              className={`source-btn ${tab === 'monitor' ? 'active' : ''}`}
+              onClick={() => setTab('monitor')}
             >
-              Simulado
+              Monitor
             </button>
             <button
-              className={`source-btn ${isHwinfo ? 'active' : ''}`}
-              onClick={() => handleSource('hwinfo')}
+              className={`source-btn ${tab === 'cost' ? 'active' : ''}`}
+              onClick={() => setTab('cost')}
             >
-              HWiNFO64
+              Custo da energia
             </button>
           </div>
           <span className="clock-now">
@@ -202,6 +214,16 @@ export default function App() {
       )}
 
       <main>
+        {tab === 'cost' ? (
+          <CostPanel
+            uf={uf}
+            city={city}
+            onUf={setUf}
+            onCity={setCity}
+            kWh={current?.energyKwh}
+          />
+        ) : (
+          <>
         <section className="stats-grid">
           <StatCard
             icon={CardIcon.power}
@@ -210,7 +232,7 @@ export default function App() {
             unit="W"
             decimals={1}
             accent="#38bdf8"
-            hint={isHwinfo ? 'CPU + GPU via HWiNFO' : undefined}
+            hint="CPU + GPU via HWiNFO"
           />
           <StatCard
             icon={CardIcon.energy}
@@ -221,13 +243,22 @@ export default function App() {
             accent="#4ade80"
           />
           <StatCard
+            icon={CardIcon.coin}
+            label="Custo estimado"
+            value={estimatedCost}
+            unit="R$"
+            decimals={2}
+            accent="#fbbf24"
+            hint={`R$ ${tariffInfo.tariff.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}/kWh · ${uf}`}
+          />
+          <StatCard
             icon={CardIcon.voltage}
             label="Tensão"
             value={current?.voltage}
             unit="V"
             decimals={1}
             accent="#fbbf24"
-            hint={isHwinfo ? 'CPU Core Voltage' : undefined}
+            hint="CPU Core Voltage"
           />
           <StatCard
             icon={CardIcon.current}
@@ -244,84 +275,80 @@ export default function App() {
             decimals={2}
             accent="#f472b6"
           />
-          {isHwinfo && (
-            <>
-              <StatCard
-                icon={CardIcon.cpu}
-                label="CPU"
-                value={current?.cpuW}
-                unit="W"
-                decimals={1}
-                accent="#60a5fa"
-                hint={
-                  current?.cpuTemp != null
-                    ? `${current.cpuTemp.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} °C`
-                    : undefined
-                }
-              />
-              <StatCard
-                icon={CardIcon.gpu}
-                label="GPU"
-                value={current?.gpuW}
-                unit="W"
-                decimals={1}
-                accent="#34d399"
-                hint={
-                  current?.gpuTemp != null
-                    ? `${current.gpuTemp.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} °C`
-                    : undefined
-                }
-              />
-            </>
-          )}
+          <StatCard
+            icon={CardIcon.cpu}
+            label="CPU"
+            value={current?.cpuW}
+            unit="W"
+            decimals={1}
+            accent="#60a5fa"
+            hint={
+              current?.cpuTemp != null
+                ? `${current.cpuTemp.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} °C`
+                : undefined
+            }
+          />
+          <StatCard
+            icon={CardIcon.gpu}
+            label="GPU"
+            value={current?.gpuW}
+            unit="W"
+            decimals={1}
+            accent="#34d399"
+            hint={
+              current?.gpuTemp != null
+                ? `${current.gpuTemp.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} °C`
+                : undefined
+            }
+          />
         </section>
 
         <EnergyChart history={history} />
 
-        {isHwinfo && (
-          <section className="sensor-card">
-            <div className="sensor-head">
-              <h2>
-                Sensores HWiNFO{' '}
-                <span className="sensor-count">
-                  {filteredSensors().length}
-                  {isHwinfo && current?.ver ? ` · SM ver ${current.ver}` : ''}
-                </span>
-              </h2>
-              <input
-                className="sensor-search"
-                type="search"
-                placeholder="Filtrar sensores..."
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-              />
-            </div>
-            <div className="sensor-table">
-              {filteredSensors().length === 0 ? (
-                <div className="sensor-empty">
-                  {current && !current.hwinfoOk
-                    ? 'Aguardando HWiNFO64 (verifique o Shared Memory Support).'
-                    : 'Nenhum sensor corresponde ao filtro.'}
+        <section className="sensor-card">
+          <div className="sensor-head">
+            <h2>
+              Sensores HWiNFO{' '}
+              <span className="sensor-count">
+                {filteredSensors().length}
+                {current?.ver ? ` · SM ver ${current.ver}` : ''}
+              </span>
+            </h2>
+            <input
+              className="sensor-search"
+              type="search"
+              placeholder="Filtrar sensores..."
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+            />
+          </div>
+          <div className="sensor-table">
+            {filteredSensors().length === 0 ? (
+              <div className="sensor-empty">
+                {current && !current.hwinfoOk
+                  ? 'Aguardando HWiNFO64 (verifique o Shared Memory Support).'
+                  : 'Nenhum sensor corresponde ao filtro.'}
+              </div>
+            ) : (
+              filteredSensors().map((s, i) => (
+                <div className="sensor-row" key={i}>
+                  <span className={`sensor-type type-${s.t}`}>
+                    {TYPE_NAMES[s.t] ?? '?'}
+                  </span>
+                  <span className="sensor-name">
+                    {s.sensor ? `${s.sensor} — ` : ''}
+                    {s.label}
+                  </span>
+                  <span className="sensor-unit">{s.unit}</span>
+                  <span className="sensor-value">
+                    {s.value.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}
+                  </span>
                 </div>
-              ) : (
-                filteredSensors().map((s, i) => (
-                  <div className="sensor-row" key={i}>
-                    <span className={`sensor-type type-${s.t}`}>
-                      {TYPE_NAMES[s.t] ?? '?'}
-                    </span>
-                    <span className="sensor-name">
-                      {s.sensor ? `${s.sensor} — ` : ''}
-                      {s.label}
-                    </span>
-                    <span className="sensor-unit">{s.unit}</span>
-                    <span className="sensor-value">
-                      {s.value.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
+              ))
+            )}
+          </div>
+        </section>
+          </>
         )}
       </main>
 

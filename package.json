@@ -33,6 +33,9 @@
       "electron/**/*",
       "package.json"
     ],
+    "asarUnpack": [
+      "electron/**/*.ps1"
+    ],
     "directories": {
       "output": "release"
     },

@@ -1,13 +1,41 @@
-import { ipcMain } from 'electron'
+import { app, ipcMain } from 'electron'
+import fs from 'node:fs'
+import path from 'node:path'
 import { EnergySimulator } from './simulator.js'
 import { HwinfoReader } from './hwinfo.js'
+
+const stateFile = () => path.join(app.getPath('userData'), 'energy-state.json')
+const SAVE_INTERVAL_MS = 10000
 
 let energyKwh = 0
 let lastTs = null
 let intervalMs = 1000
-let source = 'sim'
+let source = 'hwinfo'
 let active = null
 let getWindow = null
+let saveTimer = null
+
+function loadSavedKwh() {
+  try {
+    const data = JSON.parse(fs.readFileSync(stateFile(), 'utf8'))
+    return Number.isFinite(data.energyKwh) ? data.energyKwh : 0
+  } catch {
+    return 0
+  }
+}
+
+function saveStateSync() {
+  try {
+    fs.mkdirSync(path.dirname(stateFile()), { recursive: true })
+    fs.writeFileSync(stateFile(), JSON.stringify({ energyKwh, updatedAt: Date.now() }), 'utf8')
+  } catch {}
+}
+
+function scheduleSave() {
+  saveTimer = setInterval(saveStateSync, SAVE_INTERVAL_MS)
+}
+
+energyKwh = loadSavedKwh()
 
 function pushEnergy(sample) {
   const now = sample.ts
@@ -59,6 +87,12 @@ function stopSource() {
 export function setupEnergyIpc(windowGetter) {
   getWindow = windowGetter
   startSource()
+  scheduleSave()
+
+  app.on('before-quit', () => {
+    clearInterval(saveTimer)
+    saveStateSync()
+  })
 
   ipcMain.handle('energy:get-snapshot', () => {
     const snap = active.getSnapshot()
@@ -72,8 +106,8 @@ export function setupEnergyIpc(windowGetter) {
     return intervalMs
   })
 
-  ipcMain.handle('energy:set-source', (_evt, s) => {
-    source = s === 'hwinfo' ? 'hwinfo' : 'sim'
+  ipcMain.handle('energy:set-source', (_evt, _s) => {
+    source = 'hwinfo'
     stopSource()
     startSource()
     return source
